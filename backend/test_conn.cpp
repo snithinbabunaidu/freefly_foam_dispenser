@@ -120,6 +120,17 @@ int main(int argc, char** argv) {
         }
         res.set_content("Mission paused.", "text/plain");
     });
+    svr.Get("/abort", [&](const httplib::Request &, httplib::Response &res) {
+        std::cout << "Received /abort request." << std::endl;
+        mavsdk::Mission::Result clear_result = mission.clear_mission();
+        if (clear_result != mavsdk::Mission::Result::Success) {
+             std::cerr << "Failed to clear mission: " << clear_result << std::endl;
+             res.set_content("Failed to abort mission!", "text/plain");
+             return;
+        }
+        std::cout << "Mission aborted and cleared." << std::endl;
+        res.set_content("Mission aborted.", "text/plain");
+    });
     std::cout << "Starting REST API server on port 8080..." << std::endl;
     svr.listen("0.0.0.0", 8080);
     return 0;
