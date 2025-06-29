@@ -11,6 +11,12 @@
 #include <mavsdk/plugins/mission/mission.h>
 #include <mavsdk/plugins/action/action.h>
 #include "httplib.h"
+#include <memory>
+
+struct Position {
+    double latitude = 0.0;
+    double longitude = 0.0;
+};
 
 std::vector<mavsdk::Mission::MissionItem> read_waypoints(const std::string& filename) {
     std::vector<mavsdk::Mission::MissionItem> items;
@@ -79,6 +85,12 @@ int main(int argc, char** argv) {
     wait_until_ready(system);
     auto mission = mavsdk::Mission{system};
     auto action = mavsdk::Action{system};
+    auto telemetry = mavsdk::Telemetry{system};
+    auto last_position = std::make_shared<Position>();
+    telemetry.subscribe_position([&](mavsdk::Telemetry::Position position) {
+        last_position->latitude = position.latitude_deg;
+        last_position->longitude = position.longitude_deg;
+    });
     httplib::Server svr;
     svr.Get("/hello", [](const httplib::Request &, httplib::Response &res) {
         res.set_content("Hello, World!", "text/plain");
@@ -140,6 +152,11 @@ int main(int argc, char** argv) {
             return;
         }
         res.set_content("Mission resumed.", "text/plain");
+    });
+    svr.Get("/telemetry", [&](const httplib::Request &, httplib::Response &res) {
+        std::string json = "{ \"latitude\": " + std::to_string(last_position->latitude) +
+                           ", \"longitude\": " + std::to_string(last_position->longitude) + " }";
+        res.set_content(json, "application/json");
     });
     std::cout << "Starting REST API server on port 8080..." << std::endl;
     svr.listen("0.0.0.0", 8080);
