@@ -28,6 +28,11 @@ struct Battery {
     float voltage_v = 0.0f;
 };
 
+struct Altitude {
+    float relative_altitude_m = 0.0f;
+    float sea_level_altitude_m = 0.0f;
+};
+
 std::vector<mavsdk::Mission::MissionItem> read_waypoints(const std::string& filename) {
     std::vector<mavsdk::Mission::MissionItem> items;
     std::ifstream file(filename);
@@ -111,6 +116,11 @@ int main(int argc, char** argv) {
         battery_status->remaining_percent = battery.remaining_percent;
         battery_status->voltage_v = battery.voltage_v;
     });
+    auto altitude = std::make_shared<Altitude>();
+    telemetry.subscribe_altitude([&](mavsdk::Telemetry::Altitude alt) {
+        altitude->relative_altitude_m = alt.altitude_relative_m;
+        altitude->sea_level_altitude_m = alt.altitude_amsl_m;
+    });
     httplib::Server svr;
     svr.Get("/hello", [](const httplib::Request &, httplib::Response &res) {
         res.set_content("Hello, World!", "text/plain");
@@ -186,6 +196,11 @@ int main(int argc, char** argv) {
     svr.Get("/battery", [&](const httplib::Request &, httplib::Response &res) {
         std::string json = "{ \"remaining_percent\": " + std::to_string(battery_status->remaining_percent) +
                            ", \"voltage_v\": " + std::to_string(battery_status->voltage_v) + " }";
+        res.set_content(json, "application/json");
+    });
+    svr.Get("/altitude", [&](const httplib::Request &, httplib::Response &res) {
+        std::string json = "{ \"relative_altitude_m\": " + std::to_string(altitude->relative_altitude_m) +
+                           ", \"sea_level_altitude_m\": " + std::to_string(altitude->sea_level_altitude_m) + " }";
         res.set_content(json, "application/json");
     });
     std::cout << "Starting REST API server on port 8080..." << std::endl;
