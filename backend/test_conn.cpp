@@ -5,6 +5,7 @@
 #include <sstream>
 #include <thread>
 #include <chrono>
+#include <future>
 #include <mavsdk/mavsdk.h>
 #include <mavsdk/plugins/telemetry/telemetry.h>
 #include <mavsdk/plugins/mission/mission.h>
@@ -74,6 +75,21 @@ int main(int argc, char** argv) {
     }
     std::cout << "successfully connected to a drone" << std::endl;
     wait_until_ready(system);
+    auto mission = mavsdk::Mission{system};
+    // mission upload
+    std::cout << "Uploading " << mission_items.size() << " mission items..." << std::endl;
+    mavsdk::Mission::MissionPlan mission_plan{};
+    mission_plan.mission_items = mission_items;
+    auto prom_upload = std::make_shared<std::promise<void>>();
+    mission.upload_mission_async(mission_plan, [prom_upload](mavsdk::Mission::Result upload_result) {
+        if (upload_result != mavsdk::Mission::Result::Success) {
+            std::cerr << "mission upload failed: " << upload_result << std::endl;
+        } else {
+            std::cout << "mission uploaded successfully." << std::endl;
+        }
+        prom_upload->set_value();
+    });
+    prom_upload->get_future().wait();
     std::cout << "drone ready" << std::endl;
     return 0;
 }
