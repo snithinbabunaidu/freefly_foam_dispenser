@@ -131,6 +131,16 @@ int main(int argc, char** argv) {
         std::cout << "Mission aborted and cleared." << std::endl;
         res.set_content("Mission aborted.", "text/plain");
     });
+    svr.Get("/resume", [&](const httplib::Request &, httplib::Response &res) {
+        std::cout << "Received /resume request." << std::endl;
+        mavsdk::Mission::Result resume_result = mission.start_mission();
+        if (resume_result != mavsdk::Mission::Result::Success) {
+            std::cerr << "Failed to resume mission: " << resume_result << std::endl;
+            res.set_content("Failed to resume mission!", "text/plain");
+            return;
+        }
+        res.set_content("Mission resumed.", "text/plain");
+    });
     std::cout << "Starting REST API server on port 8080..." << std::endl;
     svr.listen("0.0.0.0", 8080);
     return 0;
