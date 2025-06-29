@@ -9,6 +9,7 @@
 #include <mavsdk/mavsdk.h>
 #include <mavsdk/plugins/telemetry/telemetry.h>
 #include <mavsdk/plugins/mission/mission.h>
+#include <mavsdk/plugins/action/action.h>
 
 std::vector<mavsdk::Mission::MissionItem> read_waypoints(const std::string& filename) {
     std::vector<mavsdk::Mission::MissionItem> items;
@@ -90,6 +91,24 @@ int main(int argc, char** argv) {
         prom_upload->set_value();
     });
     prom_upload->get_future().wait();
-    std::cout << "drone ready" << std::endl;
+    auto action = mavsdk::Action{system};
+    std::cout << "Arming drone..." << std::endl;
+    action.arm();
+    std::cout << "starting mission..." << std::endl;
+    auto prom_start = std::make_shared<std::promise<void>>();
+    mission.start_mission_async([prom_start](mavsdk::Mission::Result start_result) {
+        if (start_result != mavsdk::Mission::Result::Success) {
+            std::cerr << "starting mission failed: " << start_result << std::endl;
+        } else {
+            std::cout << "mission started successfully." << std::endl;
+        }
+        prom_start->set_value();
+    });
+    prom_start->get_future().wait();
+    std::cout << "mission in progress" << std::endl;
+    while (!mission.is_mission_finished().second) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+    std::cout << "mission finished" << std::endl;
     return 0;
 }
