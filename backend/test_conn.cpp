@@ -10,6 +10,7 @@
 #include <mavsdk/plugins/telemetry/telemetry.h>
 #include <mavsdk/plugins/mission/mission.h>
 #include <mavsdk/plugins/action/action.h>
+#include "httplib.h"
 
 std::vector<mavsdk::Mission::MissionItem> read_waypoints(const std::string& filename) {
     std::vector<mavsdk::Mission::MissionItem> items;
@@ -78,6 +79,38 @@ int main(int argc, char** argv) {
     wait_until_ready(system);
     auto mission = mavsdk::Mission{system};
     auto action = mavsdk::Action{system};
-    std::cout << "websocket part" << std::endl;
+    httplib::Server svr;
+    svr.Get("/hello", [](const httplib::Request &, httplib::Response &res) {
+        res.set_content("Hello, World!", "text/plain");
+    });
+
+    svr.Get("/start", [&](const httplib::Request &, httplib::Response &res) {
+        std::cout << "Received /start request. Uploading mission..." << std::endl;
+        mavsdk::Mission::MissionPlan mission_plan{};
+        mission_plan.mission_items = mission_items;
+        mavsdk::Mission::Result upload_result = mission.upload_mission(mission_plan);
+        if (upload_result != mavsdk::Mission::Result::Success) {
+            std::cerr << "Mission upload failed: " << upload_result << std::endl;
+            res.set_content("Mission upload failed!", "text/plain");
+            return;
+        }
+        std::cout << "Mission uploaded. Arming..." << std::endl;
+        mavsdk::Action::Result arm_result = action.arm();
+        if (arm_result != mavsdk::Action::Result::Success) {
+            std::cerr << "Arming failed: " << arm_result << std::endl;
+            res.set_content("Arming failed!", "text/plain");
+            return;
+        }
+        std::cout << "Armed. Starting mission..." << std::endl;
+        mavsdk::Mission::Result start_result = mission.start_mission();
+        if (start_result != mavsdk::Mission::Result::Success) {
+            std::cerr << "Mission start failed: " << start_result << std::endl;
+            res.set_content("Mission start failed!", "text/plain");
+            return;
+        }
+        res.set_content("Mission started successfully!", "text/plain");
+    });
+    std::cout << "Starting REST API server on port 8080..." << std::endl;
+    svr.listen("0.0.0.0", 8080);
     return 0;
 }
