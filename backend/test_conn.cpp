@@ -3,6 +3,10 @@
 #include <vector>
 #include <fstream>
 #include <sstream>
+#include <thread>
+#include <chrono>
+#include <mavsdk/mavsdk.h>
+#include <mavsdk/plugins/telemetry/telemetry.h>
 #include <mavsdk/plugins/mission/mission.h>
 
 std::vector<mavsdk::Mission::MissionItem> read_waypoints(const std::string& filename) {
@@ -35,6 +39,15 @@ std::vector<mavsdk::Mission::MissionItem> read_waypoints(const std::string& file
     return items;
 }
 
+void wait_until_ready(std::shared_ptr<mavsdk::System> system) {
+    auto telemetry = mavsdk::Telemetry{system};
+    while (!telemetry.health_all_ok()) {
+        std::cout << "Vehicle not ready. Waiting..." << std::endl;
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+    std::cout << "Vehicle ready to arm." << std::endl;
+}
+
 int main(int argc, char** argv) {
     if (argc != 2) {
         std::cerr << "Usage: " << argv[0] << " <waypoint_file>" << std::endl;
@@ -45,11 +58,22 @@ int main(int argc, char** argv) {
         std::cerr << "Error: No valid waypoints found." << std::endl;
         return 1;
     }
-    std::cout << "Successfully read " << mission_items.size() << " waypoints:" << std::endl;
-    for (size_t i = 0; i < mission_items.size(); ++i) {
-        std::cout << "Waypoint " << i + 1 << ": Lat=" << mission_items[i].latitude_deg
-                  << ", Lon=" << mission_items[i].longitude_deg
-                  << ", Alt=" << mission_items[i].relative_altitude_m << std::endl;
+    std::cout << "successfully read " << mission_items.size() << " waypoints." << std::endl;
+    mavsdk::Mavsdk mavsdk{mavsdk::Mavsdk::Configuration{mavsdk::ComponentType::GroundStation}};
+    std::cout << "Connecting to drone simulator..." << std::endl;
+    auto result = mavsdk.add_any_connection("udpin://0.0.0.0:14550");
+    if (result != mavsdk::ConnectionResult::Success) {
+        std::cerr << "connection failed: " << result << std::endl;
+        return 1;
     }
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+    auto system = mavsdk.systems().empty() ? nullptr : mavsdk.systems().at(0);
+    if (!system) {
+        std::cout << "drone not found" << std::endl;
+        return 1;
+    }
+    std::cout << "successfully connected to a drone" << std::endl;
+    wait_until_ready(system);
+    std::cout << "drone ready" << std::endl;
     return 0;
 }
