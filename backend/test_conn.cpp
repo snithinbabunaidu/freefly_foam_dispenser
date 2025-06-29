@@ -33,6 +33,10 @@ struct Altitude {
     float sea_level_altitude_m = 0.0f;
 };
 
+struct Heading {
+    double heading_deg = 0.0;
+};
+
 std::vector<mavsdk::Mission::MissionItem> read_waypoints(const std::string& filename) {
     std::vector<mavsdk::Mission::MissionItem> items;
     std::ifstream file(filename);
@@ -121,6 +125,10 @@ int main(int argc, char** argv) {
         altitude->relative_altitude_m = alt.altitude_relative_m;
         altitude->sea_level_altitude_m = alt.altitude_amsl_m;
     });
+    auto heading = std::make_shared<Heading>();
+    telemetry.subscribe_heading([&](mavsdk::Telemetry::Heading head) {
+        heading->heading_deg = head.heading_deg;
+    });
     httplib::Server svr;
     svr.Get("/hello", [](const httplib::Request &, httplib::Response &res) {
         res.set_content("Hello, World!", "text/plain");
@@ -201,6 +209,10 @@ int main(int argc, char** argv) {
     svr.Get("/altitude", [&](const httplib::Request &, httplib::Response &res) {
         std::string json = "{ \"relative_altitude_m\": " + std::to_string(altitude->relative_altitude_m) +
                            ", \"sea_level_altitude_m\": " + std::to_string(altitude->sea_level_altitude_m) + " }";
+        res.set_content(json, "application/json");
+    });
+    svr.Get("/heading", [&](const httplib::Request &, httplib::Response &res) {
+        std::string json = "{ \"heading_deg\": " + std::to_string(heading->heading_deg) + " }";
         res.set_content(json, "application/json");
     });
     std::cout << "Starting REST API server on port 8080..." << std::endl;
