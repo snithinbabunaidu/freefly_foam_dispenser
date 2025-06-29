@@ -23,6 +23,11 @@ struct MissionProgress {
     int total = 0;
 };
 
+struct Battery {
+    float remaining_percent = 0.0f;
+    float voltage_v = 0.0f;
+};
+
 std::vector<mavsdk::Mission::MissionItem> read_waypoints(const std::string& filename) {
     std::vector<mavsdk::Mission::MissionItem> items;
     std::ifstream file(filename);
@@ -101,6 +106,11 @@ int main(int argc, char** argv) {
         mission_progress->current = progress.current;
         mission_progress->total = progress.total;
     });
+    auto battery_status = std::make_shared<Battery>();
+    telemetry.subscribe_battery([&](mavsdk::Telemetry::Battery battery) {
+        battery_status->remaining_percent = battery.remaining_percent;
+        battery_status->voltage_v = battery.voltage_v;
+    });
     httplib::Server svr;
     svr.Get("/hello", [](const httplib::Request &, httplib::Response &res) {
         res.set_content("Hello, World!", "text/plain");
@@ -171,6 +181,11 @@ int main(int argc, char** argv) {
     svr.Get("/mission_progress", [&](const httplib::Request &, httplib::Response &res) {
         std::string json = "{ \"current\": " + std::to_string(mission_progress->current) +
                            ", \"total\": " + std::to_string(mission_progress->total) + " }";
+        res.set_content(json, "application/json");
+    });
+    svr.Get("/battery", [&](const httplib::Request &, httplib::Response &res) {
+        std::string json = "{ \"remaining_percent\": " + std::to_string(battery_status->remaining_percent) +
+                           ", \"voltage_v\": " + std::to_string(battery_status->voltage_v) + " }";
         res.set_content(json, "application/json");
     });
     std::cout << "Starting REST API server on port 8080..." << std::endl;
