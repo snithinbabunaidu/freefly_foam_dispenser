@@ -1,0 +1,11 @@
+# Build artifacts
+build/
+*.vcxproj*
+*.sln
+CMakeCache.txt
+cmake_install.cmake
+CMakeFiles/
+
+# IDE files
+.vscode/
+.idea/
