@@ -110,6 +110,16 @@ int main(int argc, char** argv) {
         }
         res.set_content("Mission started successfully!", "text/plain");
     });
+    svr.Get("/pause", [&](const httplib::Request &, httplib::Response &res) {
+        std::cout << "Received /pause request." << std::endl;
+        mavsdk::Mission::Result pause_result = mission.pause_mission();
+        if (pause_result != mavsdk::Mission::Result::Success) {
+            std::cerr << "Failed to pause mission: " << pause_result << std::endl;
+            res.set_content("Failed to pause mission!", "text/plain");
+            return;
+        }
+        res.set_content("Mission paused.", "text/plain");
+    });
     std::cout << "Starting REST API server on port 8080..." << std::endl;
     svr.listen("0.0.0.0", 8080);
     return 0;
