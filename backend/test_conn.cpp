@@ -37,15 +37,10 @@ struct Heading {
     double heading_deg = 0.0;
 };
 
-std::vector<mavsdk::Mission::MissionItem> read_waypoints(const std::string& filename) {
+std::vector<mavsdk::Mission::MissionItem> read_waypoints(std::istream& stream) {
     std::vector<mavsdk::Mission::MissionItem> items;
-    std::ifstream file(filename);
-    if (!file.is_open()) {
-        std::cerr << "Error: Could not open file " << filename << std::endl;
-        return items;
-    }
     std::string line;
-    while (std::getline(file, line)) {
+    while (std::getline(stream, line)) {
         std::stringstream ss(line);
         std::string lat_str, lon_str, alt_str;
         if (std::getline(ss, lat_str, ',') && std::getline(ss, lon_str, ',') && std::getline(ss, alt_str, ',')) {
@@ -77,16 +72,6 @@ void wait_until_ready(std::shared_ptr<mavsdk::System> system) {
 }
 
 int main(int argc, char** argv) {
-    if (argc != 2) {
-        std::cerr << "Usage: " << argv[0] << " <waypoint_file>" << std::endl;
-        return 1;
-    }
-    auto mission_items = read_waypoints(argv[1]);
-    if (mission_items.empty()) {
-        std::cerr << "Error: No valid waypoints found." << std::endl;
-        return 1;
-    }
-    std::cout << "successfully read " << mission_items.size() << " waypoints." << std::endl;
     mavsdk::Mavsdk mavsdk{mavsdk::Mavsdk::Configuration{mavsdk::ComponentType::GroundStation}};
     std::cout << "Connecting to drone simulator..." << std::endl;
     auto result = mavsdk.add_any_connection("udpin://0.0.0.0:14550");
@@ -143,8 +128,17 @@ int main(int argc, char** argv) {
         res.set_content("Hello, World!", "text/plain");
     });
 
-    svr.Get("/start", [&](const httplib::Request &, httplib::Response &res) {
-        std::cout << "Received /start request. Uploading mission..." << std::endl;
+    svr.Post("/start", [&](const httplib::Request &req, httplib::Response &res) {
+        std::cout << "Received /start request with waypoint data." << std::endl;
+        std::stringstream waypoint_stream(req.body);
+        auto mission_items = read_waypoints(waypoint_stream);
+        if (mission_items.empty()) {
+            std::cerr << "Error: No valid waypoints found in request." << std::endl;
+            res.set_content("No valid waypoints found!", "text/plain");
+            res.status = 400;
+            return;
+        }
+        std::cout << "Successfully parsed " << mission_items.size() << " waypoints." << std::endl;
         mavsdk::Mission::MissionPlan mission_plan{};
         mission_plan.mission_items = mission_items;
         mavsdk::Mission::Result upload_result = mission.upload_mission(mission_plan);
