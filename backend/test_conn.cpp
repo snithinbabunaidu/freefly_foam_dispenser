@@ -130,6 +130,15 @@ int main(int argc, char** argv) {
         heading->heading_deg = head.heading_deg;
     });
     httplib::Server svr;
+    svr.set_pre_routing_handler([](const httplib::Request&, httplib::Response& res) {
+        res.set_header("Access-Control-Allow-Origin", "*");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type");
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        return httplib::Server::HandlerResponse::Unhandled;
+    });
+    svr.Options("/(.*)", [](const httplib::Request&, httplib::Response& res) {
+        res.status = 204;
+    });
     svr.Get("/hello", [](const httplib::Request &, httplib::Response &res) {
         res.set_content("Hello, World!", "text/plain");
     });
