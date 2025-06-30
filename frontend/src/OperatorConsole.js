@@ -15,17 +15,37 @@ function OperatorConsole() {
     total: 0,
   });
 
-  const waypoints = [
-    [47.397742, 8.545594],
-    [47.397742, 8.545794],
-    [47.397942, 8.545794],
-    [47.397942, 8.545594],
-    [47.397742, 8.545594],
-  ];
+  const [waypoints, setWaypoints] = useState([]);
+  const [waypointFileContent, setWaypointFileContent] = useState('');
+
+  const handleFileSelect = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target.result;
+        setWaypointFileContent(text);
+        const parsedWaypoints = text.trim().split('\n').map(line => {
+          const [lat, lon] = line.split(',');
+          return [parseFloat(lat), parseFloat(lon)];
+        });
+        setWaypoints(parsedWaypoints);
+      };
+      reader.readAsText(file);
+    }
+  };
 
   const handleCommand = async (command) => {
     try {
-      await sendCommand(command);
+      if (command === 'start') {
+        if (!waypointFileContent) {
+          alert('Please select a waypoint file first!');
+          return;
+        }
+        await sendCommand('start', waypointFileContent);
+      } else {
+        await sendCommand(command);
+      }
       console.log(`Command sent: ${command}`);
     } catch (error) {
       console.error(`Error sending command: ${command}`, error);
@@ -73,7 +93,7 @@ function OperatorConsole() {
       <h1>Freefly Foam Dispenser</h1>
       <div className="main-container">
         <div className="left-panel">
-          <Commands onCommand={handleCommand} />
+          <Commands onCommand={handleCommand} onFileSelect={handleFileSelect}/>
           <Telemetry telemetry={telemetry} />
         </div>
         <div className="right-panel">
