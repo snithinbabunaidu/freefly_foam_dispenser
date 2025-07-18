@@ -7,5 +7,5 @@ find_package(MAVSDK REQUIRED HINTS ${MAVSDK_ROOT})
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
-add_executable(backend_flight_module test_conn.cpp)
+add_executable(backend_flight_module swarm_backend.cpp)
 target_link_libraries(backend_flight_module MAVSDK::mavsdk ws2_32 wsock32)
