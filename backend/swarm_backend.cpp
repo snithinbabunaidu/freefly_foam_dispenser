@@ -60,6 +60,9 @@ public:
         battery_status = std::make_shared<Battery>();
         altitude = std::make_shared<Altitude>();
         heading = std::make_shared<Heading>();
+
+        std::cout << "Drone object created. Subscribing to telemetry..." << std::endl;
+        subscribe_to_telemetry();
     }
 
     // telemetry subscriptions
