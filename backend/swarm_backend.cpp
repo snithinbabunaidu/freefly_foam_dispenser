@@ -159,22 +159,88 @@ int main(int argc, char** argv) {
 
     svr.Post("/start", [&](const httplib::Request &req, httplib::Response &res) {
         auto drone = fleet->at(0);
-        std::stringstream waypoint_stream(req.body);
-        auto mission_items = read_waypoints(waypoint_stream);
-        mavsdk::Mission::MissionPlan mission_plan{};
-        mission_plan.mission_items = mission_items;
-        
-        drone->mission->upload_mission(mission_plan);
-        drone->action->arm();
-        drone->mission->start_mission();
-        
-        res.set_content("Mission started", "text/plain");
+        auto waypoints_body = req.body;
+
+        std::thread([drone, waypoints_body]() {
+            std::cout << "Waiting for drone to be ready..." << std::endl;
+            while (!drone->telemetry->health_all_ok()) {
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+            }
+            std::cout << "Drone is ready." << std::endl;
+
+            std::stringstream waypoint_stream(waypoints_body);
+            auto mission_items = read_waypoints(waypoint_stream);
+            mavsdk::Mission::MissionPlan mission_plan{};
+            mission_plan.mission_items = mission_items;
+            
+            if (drone->mission->upload_mission(mission_plan) != mavsdk::Mission::Result::Success) { 
+                std::cerr << "Mission upload failed" << std::endl; 
+                return; 
+            }
+            if (drone->action->arm() != mavsdk::Action::Result::Success) { 
+                std::cerr << "Arming failed" << std::endl; 
+                return; 
+            }
+            if (drone->mission->start_mission() != mavsdk::Mission::Result::Success) { 
+                std::cerr << "Mission start failed" << std::endl; 
+                return; 
+            }
+            
+            std::cout << "Mission started successfully in background." << std::endl;
+        }).detach();
+
+        res.set_content("Mission start command received.", "text/plain");
+    });
+
+    svr.Get("/pause", [&](const httplib::Request &, httplib::Response &res) {
+        auto drone = fleet->at(0);
+        if (drone->mission->pause_mission() != mavsdk::Mission::Result::Success) { res.status = 500; res.set_content("Pause failed", "text/plain"); return; }
+        res.set_content("Mission paused", "text/plain");
+    });
+
+    svr.Get("/resume", [&](const httplib::Request &, httplib::Response &res) {
+        auto drone = fleet->at(0);
+        if (drone->mission->start_mission() != mavsdk::Mission::Result::Success) { res.status = 500; res.set_content("Resume failed", "text/plain"); return; }
+        res.set_content("Mission resumed", "text/plain");
+    });
+
+    svr.Get("/abort", [&](const httplib::Request &, httplib::Response &res) {
+        auto drone = fleet->at(0);
+        if (drone->mission->clear_mission() != mavsdk::Mission::Result::Success) { res.status = 500; res.set_content("Clear mission failed", "text/plain"); return; }
+        res.set_content("Mission aborted", "text/plain");
     });
     
     svr.Get("/telemetry", [&](const httplib::Request &, httplib::Response &res) {
         auto drone = fleet->at(0);
         std::string json = "{ \"latitude\": " + std::to_string(drone->last_position->latitude) +
                            ", \"longitude\": " + std::to_string(drone->last_position->longitude) + " }";
+        res.set_content(json, "application/json");
+    });
+
+    svr.Get("/mission_progress", [&](const httplib::Request &, httplib::Response &res) {
+        auto drone = fleet->at(0);
+        std::string json = "{ \"current\": " + std::to_string(drone->mission_progress->current) +
+                           ", \"total\": " + std::to_string(drone->mission_progress->total) + " }";
+        res.set_content(json, "application/json");
+    });
+
+    svr.Get("/battery", [&](const httplib::Request &, httplib::Response &res) {
+        auto drone = fleet->at(0);
+        std::string json = "{ \"remaining_percent\": " + std::to_string(drone->battery_status->remaining_percent) +
+                           ", \"voltage_v\": " + std::to_string(drone->battery_status->voltage_v) + " }";
+        res.set_content(json, "application/json");
+    });
+
+    svr.Get("/altitude", [&](const httplib::Request &, httplib::Response &res) {
+        auto drone = fleet->at(0);
+        std::string json = "{ \"relative_altitude_m\": " + std::to_string(drone->altitude->relative_altitude_m) +
+                           ", \"sea_level_altitude_m\": " + std::to_string(drone->altitude->sea_level_altitude_m) + " }";
+        res.set_content(json, "application/json");
+    });
+
+    svr.Get("/heading", [&](const httplib::Request &, httplib::Response &res) {
+        auto drone = fleet->at(0);
+        std::string json = "{ \"heading_deg\": " + std::to_string(drone->heading->heading_deg) + " }";
         res.set_content(json, "application/json");
     });
 
