@@ -2,11 +2,16 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <thread>
+#include <chrono>
+#include <fstream>
+#include <sstream>
 
 #include <mavsdk/mavsdk.h>
 #include <mavsdk/plugins/action/action.h>
 #include <mavsdk/plugins/mission/mission.h>
 #include <mavsdk/plugins/telemetry/telemetry.h>
+#include "httplib.h"
 
 // Data struct for telemetry
 struct Position {
@@ -32,6 +37,29 @@ struct Altitude {
 struct Heading {
     double heading_deg = 0.0;
 };
+
+// Helper function to parse waypoints
+std::vector<mavsdk::Mission::MissionItem> read_waypoints(std::istream& stream) {
+    std::vector<mavsdk::Mission::MissionItem> items;
+    std::string line;
+    while (std::getline(stream, line)) {
+        std::stringstream ss(line);
+        std::string lat_str, lon_str, alt_str;
+        if (std::getline(ss, lat_str, ',') && std::getline(ss, lon_str, ',') && std::getline(ss, alt_str, ',')) {
+            try {
+                mavsdk::Mission::MissionItem new_item{};
+                new_item.latitude_deg = std::stod(lat_str);
+                new_item.longitude_deg = std::stod(lon_str);
+                new_item.relative_altitude_m = std::stof(alt_str);
+                new_item.is_fly_through = false;
+                items.push_back(new_item);
+            } catch (const std::exception& e) {
+                std::cerr << "Warning: Skipping invalid waypoint line '" << line << "': " << e.what() << std::endl;
+            }
+        }
+    }
+    return items;
+}
 
 class Drone {
 public:
@@ -92,3 +120,65 @@ public:
         });
     }
 };
+
+int main(int argc, char** argv) {
+    mavsdk::Mavsdk mavsdk{mavsdk::Mavsdk::Configuration{mavsdk::ComponentType::GroundStation}};
+
+    auto result = mavsdk.add_any_connection("udpin://0.0.0.0:14550");
+    if (result != mavsdk::ConnectionResult::Success) {
+        std::cerr << "Connection failed: " << result << std::endl;
+        return 1;
+    }
+    std::cout << "Backend listening on UDP port 14550..." << std::endl;
+
+    auto fleet = std::make_shared<std::vector<std::shared_ptr<Drone>>>();
+
+    mavsdk.subscribe_on_new_system([&mavsdk, &fleet]() {
+        auto new_system = mavsdk.systems().back();
+        std::cout << "Discovered a new drone." << std::endl;
+        fleet->push_back(std::make_shared<Drone>(new_system));
+        std::cout << "Fleet size is now: " << fleet->size() << std::endl;
+    });
+
+    std::cout << "Waiting for the first drone to connect..." << std::endl;
+    while (fleet->empty()) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+    std::cout << "First drone has connected. Starting HTTP server on port 8080." << std::endl;
+
+    httplib::Server svr;
+    svr.set_pre_routing_handler([](const httplib::Request&, httplib::Response& res) {
+        res.set_header("Access-Control-Allow-Origin", "*");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type");
+        res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        return httplib::Server::HandlerResponse::Unhandled;
+    });
+    svr.Options("/(.*)", [](const httplib::Request&, httplib::Response& res) {
+        res.status = 204;
+    });
+
+    svr.Post("/start", [&](const httplib::Request &req, httplib::Response &res) {
+        auto drone = fleet->at(0);
+        std::stringstream waypoint_stream(req.body);
+        auto mission_items = read_waypoints(waypoint_stream);
+        mavsdk::Mission::MissionPlan mission_plan{};
+        mission_plan.mission_items = mission_items;
+        
+        drone->mission->upload_mission(mission_plan);
+        drone->action->arm();
+        drone->mission->start_mission();
+        
+        res.set_content("Mission started", "text/plain");
+    });
+    
+    svr.Get("/telemetry", [&](const httplib::Request &, httplib::Response &res) {
+        auto drone = fleet->at(0);
+        std::string json = "{ \"latitude\": " + std::to_string(drone->last_position->latitude) +
+                           ", \"longitude\": " + std::to_string(drone->last_position->longitude) + " }";
+        res.set_content(json, "application/json");
+    });
+
+    svr.listen("0.0.0.0", 8080);
+
+    return 0;
+}
