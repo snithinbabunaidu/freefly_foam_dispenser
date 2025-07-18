@@ -61,4 +61,31 @@ public:
         altitude = std::make_shared<Altitude>();
         heading = std::make_shared<Heading>();
     }
+
+    // telemetry subscriptions
+    void subscribe_to_telemetry() {
+        telemetry->subscribe_position([this](mavsdk::Telemetry::Position p) {
+            this->last_position->latitude = p.latitude_deg;
+            this->last_position->longitude = p.longitude_deg;
+        });
+
+        mission->subscribe_mission_progress([this](mavsdk::Mission::MissionProgress mp) {
+            this->mission_progress->current = mp.current;
+            this->mission_progress->total = mp.total;
+        });
+
+        telemetry->subscribe_battery([this](mavsdk::Telemetry::Battery b) {
+            this->battery_status->remaining_percent = b.remaining_percent;
+            this->battery_status->voltage_v = b.voltage_v;
+        });
+
+        telemetry->subscribe_altitude([this](mavsdk::Telemetry::Altitude a) {
+            this->altitude->relative_altitude_m = a.altitude_relative_m;
+            this->altitude->sea_level_altitude_m = a.altitude_amsl_m;
+        });
+
+        telemetry->subscribe_heading([this](mavsdk::Telemetry::Heading h) {
+            this->heading->heading_deg = h.heading_deg;
+        });
+    }
 };
